@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Task Calendar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Tailwind dark mode configuration
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+        }
+        .calendar-day {
+            min-height: 120px;
+        }
+        .hour-row {
+            min-height: 80px;
+        }
+        .task-item {
+            transition: all 0.2s ease-in-out;
+        }
+        .task-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+        /* Custom scrollbar for better aesthetics */
+        .day-tasks-wrapper::-webkit-scrollbar, .overflow-y-auto::-webkit-scrollbar {
+            width: 6px;
+        }
+        .day-tasks-wrapper::-webkit-scrollbar-track, .overflow-y-auto::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .day-tasks-wrapper::-webkit-scrollbar-thumb, .overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #a8a29e;
+            border-radius: 10px;
+        }
+        .day-tasks-wrapper::-webkit-scrollbar-thumb:hover, .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #78716c;
+        }
+        .modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800 bg-gray-100 dark:bg-gray-900 dark:text-gray-200">
+
+    <!-- Auth Container -->
+    <div id="auth-container" class="fixed inset-0 bg-gray-200 dark:bg-gray-800 z-50 flex items-center justify-center">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-gray-900 rounded-2xl shadow-xl">
+             <div id="auth-view">
+                <!-- Login/Register forms will be injected here -->
+             </div>
+             <p id="auth-error" class="text-red-500 text-sm text-center h-4"></p>
+        </div>
+    </div>
+
+
+    <!-- Main App Container -->
+    <div id="app" class="p-4 md:p-8 min-h-screen hidden">
+        
+        <!-- Header: Controls & Navigation -->
+        <header class="mb-6 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <button id="prev-btn" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg shadow">&lt;</button>
+                    <h2 id="current-period" class="text-xl md:text-2xl font-bold text-gray-700 dark:text-gray-200 w-48 sm:w-64 text-center"></h2>
+                    <button id="next-btn" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg shadow">&gt;</button>
+                    <button id="today-btn" class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">Today</button>
+                </div>
+                <div class="flex items-center justify-between w-full sm:w-auto mt-4 sm:mt-0 gap-2">
+                    <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1 space-x-1">
+                        <button data-view="month" class="view-btn px-3 py-1 text-sm font-medium rounded-md">Month</button>
+                        <button data-view="week" class="view-btn px-3 py-1 text-sm font-medium rounded-md">Week</button>
+                        <button data-view="day" class="view-btn px-3 py-1 text-sm font-medium rounded-md">Day</button>
+                    </div>
+                    <button id="add-task-btn" class="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow hover:bg-green-600">+</button>
+                    <button id="theme-toggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200"></button>
+                    <button id="logout-btn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow hover:bg-red-600">Logout</button>
+                </div>
+            </div>
+             <div id="user-info" class="text-sm text-gray-500 dark:text-gray-400 mt-2"></div>
+        </header>
+
+        <!-- Calendar Container -->
+        <main id="calendar-container" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+            <!-- Calendar grid will be rendered here -->
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></div>
+    <div id="task-modal" class="modal fixed inset-0 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none transform scale-95">
+        <div id="modal-content" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 relative transform transition-all duration-300 max-h-[90vh] overflow-y-auto">
+             <button class="close-modal-btn absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+    
+    <div id="add-collaborator-modal" class="modal fixed inset-0 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none transform scale-95">
+         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6 relative transform transition-all duration-300">
+             <button class="close-modal-btn absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            <h3 class="text-xl font-bold mb-4">Add Collaborators</h3>
+            <div id="user-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <button id="save-collaborators-btn" class="mt-4 w-full px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow hover:bg-indigo-700">Save</button>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, setDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- FIREBASE SETUP ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "AIza...", authDomain: "...", projectId: "..." };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const tasksCollection = collection(db, `artifacts/${appId}/public/data/tasks`);
+        const usersCollection = collection(db, `artifacts/${appId}/public/data/users`);
+
+        // --- STATE MANAGEMENT ---
+        let currentDate = new Date();
+        let currentView = 'month';
+        let tasks = [];
+        let users = [];
+        let currentUser = null;
+        let unsubscribeTasks = null;
+
+        // DOM Elements
+        const el = {
+            authContainer: document.getElementById('auth-container'),
+            authView: document.getElementById('auth-view'),
+            authError: document.getElementById('auth-error'),
+            appContainer: document.getElementById('app'),
+            calendarContainer: document.getElementById('calendar-container'),
+            currentPeriod: document.getElementById('current-period'),
+            userInfo: document.getElementById('user-info'),
+            modalBackdrop: document.getElementById('modal-backdrop'),
+            taskModal: document.getElementById('task-modal'),
+            modalBody: document.getElementById('modal-body'),
+            addCollabModal: document.getElementById('add-collaborator-modal'),
+            userList: document.getElementById('user-list'),
+        };
+
+        // --- AUTHENTICATION ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                el.authContainer.classList.add('hidden');
+                el.appContainer.classList.remove('hidden');
+                el.userInfo.textContent = `Logged in as: ${user.displayName || user.email}`;
+                fetchAllUsers();
+                initializeCalendar();
+            } else {
+                currentUser = null;
+                el.authContainer.classList.remove('hidden');
+                el.appContainer.classList.add('hidden');
+                renderLoginForm();
+                if(unsubscribeTasks) unsubscribeTasks();
+            }
+        });
+
+        const renderLoginForm = () => {
+            el.authView.innerHTML = `
+                <h2 class="text-2xl font-bold text-center">Login</h2>
+                <form id="login-form" class="space-y-4">
+                    <input type="email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <input type="password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <button type="submit" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Login</button>
+                </form>
+                <p class="text-center text-sm">Don't have an account? <a href="#" id="show-register" class="text-indigo-400 hover:underline">Register</a></p>
+            `;
+            el.authView.querySelector('#login-form').addEventListener('submit', handleLogin);
+            el.authView.querySelector('#show-register').addEventListener('click', (e) => { e.preventDefault(); renderRegisterForm(); });
+        };
+        
+        const renderRegisterForm = () => {
+             el.authView.innerHTML = `
+                <h2 class="text-2xl font-bold text-center">Register</h2>
+                <form id="register-form" class="space-y-4">
+                    <input type="text" placeholder="Display Name" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <input type="email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <input type="password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <button type="submit" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Register</button>
+                </form>
+                <p class="text-center text-sm">Already have an account? <a href="#" id="show-login" class="text-indigo-400 hover:underline">Login</a></p>
+            `;
+            el.authView.querySelector('#register-form').addEventListener('submit', handleRegister);
+            el.authView.querySelector('#show-login').addEventListener('click', (e) => { e.preventDefault(); renderLoginForm(); });
+        };
+
+        const handleLogin = async (e) => {
+            e.preventDefault();
+            const [email, password] = e.target.elements;
+            try {
+                el.authError.textContent = '';
+                await signInWithEmailAndPassword(auth, email.value, password.value);
+            } catch (error) {
+                console.error("Login failed:", error);
+                el.authError.textContent = error.message;
+            }
+        };
+
+        const handleRegister = async (e) => {
+            e.preventDefault();
+            const [displayName, email, password] = e.target.elements;
+            try {
+                el.authError.textContent = '';
+                const userCredential = await createUserWithEmailAndPassword(auth, email.value, password.value);
+                await updateProfile(userCredential.user, { displayName: displayName.value });
+                // Also create a user document in Firestore
+                await setDoc(doc(usersCollection, userCredential.user.uid), {
+                    uid: userCredential.user.uid,
+                    displayName: displayName.value,
+                    email: email.value
+                });
+
+            } catch (error) {
+                console.error("Registration failed:", error);
+                el.authError.textContent = error.message;
+            }
+        };
+        
+        const handleLogout = () => {
+            signOut(auth).catch(error => console.error("Logout failed:", error));
+        };
+        
+        // --- DATA FETCHING ---
+        const fetchAllUsers = async () => {
+            try {
+                const querySnapshot = await getDocs(usersCollection);
+                users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            } catch (error) {
+                console.error("Error fetching users:", error);
+            }
+        };
+
+        // --- MAIN CALENDAR LOGIC ---
+        const initializeCalendar = () => {
+            if (unsubscribeTasks) unsubscribeTasks(); // Unsubscribe from previous listener if exists
+
+            unsubscribeTasks = onSnapshot(tasksCollection, (snapshot) => {
+                tasks = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        ...data,
+                        startTime: data.startTime.toDate(),
+                        endTime: data.endTime.toDate()
+                    };
+                });
+                render();
+            }, (error) => {
+                console.error("Error listening to tasks:", error);
+            });
+        };
+
+        // ... All rendering functions (render, renderMonthView, etc.) will be placed here
+        // --- RENDERING FUNCTIONS ---
+        function render() {
+            updateCurrentPeriodDisplay();
+            updateActiveViewButton();
+            el.calendarContainer.innerHTML = ''; // Clear previous view
+            switch (currentView) {
+                case 'month': renderMonthView(); break;
+                case 'week': renderWeekView(); break;
+                case 'day': renderDayView(); break;
+            }
+        }
+        
+        function renderMonthView() {
+            // ... Logic to render the month view, now including multi-day task rendering
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const firstDayOfMonth = new Date(year, month, 1);
+            const lastDayOfMonth = new Date(year, month + 1, 0);
+            const startDayOfWeek = firstDayOfMonth.getDay();
+
+            let html = '<div class="grid grid-cols-7 text-center font-semibold text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">';
+            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+                html += `<div class="py-2">${day}</div>`;
+            });
+            html += '</div><div class="calendar-grid bg-gray-300 dark:bg-gray-700 border border-gray-300 dark:border-gray-700 gap-px">';
+
+            for (let i = 0; i < startDayOfWeek; i++) {
+                html += '<div class="bg-gray-50 dark:bg-gray-800/50"></div>';
+            }
+
+            for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+                const date = new Date(year, month, day);
+                const isToday = date.toDateString() === new Date().toDateString();
+                const dayTasks = tasks.filter(task => isDateInRange(date, task.startTime, task.endTime));
+                
+                html += `<div class="calendar-day bg-white dark:bg-gray-800 p-2 relative flex flex-col">
+                            <div class="text-sm font-medium ${isToday ? 'bg-indigo-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : ''}">${day}</div>
+                            <div class="day-tasks-wrapper flex-grow overflow-y-auto mt-1 space-y-1">`;
+                
+                dayTasks.forEach(task => {
+                    if (isSameDay(task.startTime, date) || date.getDay() === 0) { // Only render task element from start day or Sunday
+                         html += createTaskElement(task, false, date);
+                    }
+                });
+                
+                html += `</div></div>`;
+            }
+            html += '</div>';
+            el.calendarContainer.innerHTML = html;
+        }
+
+        function renderWeekView() {
+            const startOfWeek = new Date(currentDate);
+            startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+
+            let html = '<div class="grid grid-cols-7 text-center font-semibold text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">';
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(startOfWeek);
+                d.setDate(startOfWeek.getDate() + i);
+                html += `<div class="py-2 ${d.toDateString() === new Date().toDateString() ? 'text-indigo-500' : ''}">${d.toLocaleString('default', {weekday: 'short'})} ${d.getDate()}</div>`;
+            }
+            html += '</div><div class="calendar-grid bg-gray-300 dark:bg-gray-700 border border-gray-300 dark:border-gray-700 gap-px">';
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(startOfWeek);
+                date.setDate(startOfWeek.getDate() + i);
+                const dayTasks = tasks.filter(task => isDateInRange(date, task.startTime, task.endTime));
+                
+                html += `<div class="calendar-day bg-white dark:bg-gray-800 p-2 relative flex flex-col">
+                            <div class="day-tasks-wrapper flex-grow overflow-y-auto mt-1 space-y-1">`;
+                
+                dayTasks.forEach(task => {
+                     if (isSameDay(task.startTime, date) || date.getDay() === 0) {
+                         html += createTaskElement(task, true, date);
+                     }
+                });
+                
+                html += `</div></div>`;
+            }
+            html += '</div>';
+            el.calendarContainer.innerHTML = html;
+        }
+
+        function renderDayView() {
+            let html = '<div class="flex flex-col h-[75vh]">';
+            const hours = Array.from({ length: 24 }, (_, i) => i);
+            html += `<div class="flex-grow overflow-y-auto relative border border-gray-200 dark:border-gray-700">`;
+            hours.forEach(hour => {
+                html += `<div class="hour-row border-b border-gray-200 dark:border-gray-700 flex items-start p-2">
+                            <div class="w-16 text-right pr-2 text-sm text-gray-500">${hour.toString().padStart(2, '0')}:00</div>
+                            <div class="flex-grow h-full border-l border-gray-200 dark:border-gray-700"></div>
+                         </div>`;
+            });
+            
+            html += `<div class="absolute top-0 left-16 right-0 bottom-0 ml-2">`;
+            const dayTasks = tasks.filter(task => isSameDay(task.startTime, currentDate));
+            dayTasks.forEach(task => {
+                const top = (task.startTime.getHours() + task.startTime.getMinutes() / 60) / 24 * 100;
+                const duration = (task.endTime.getTime() - task.startTime.getTime()) / (1000 * 60 * 60);
+                const height = (duration / 24) * 100;
+
+                html += `<div class="absolute w-full pr-2" style="top: ${top}%; height: ${height}%; z-index: 5;">
+                            ${createTaskElement(task, true)}
+                         </div>`;
+            });
+            html += `</div></div></div>`;
+            el.calendarContainer.innerHTML = html;
+        }
+
+
+        // --- TASK & MODAL RENDERING ---
+        function createTaskElement(task, showTime = false, contextDate = null) {
+            const { bgColor, textColor, borderColor } = getStatusColors(task.status);
+            const timeString = showTime ? `<div class="text-xs font-medium">${formatTime(task.startTime)} - ${formatTime(task.endTime)}</div>` : '';
+            
+            let durationSpan = 1;
+            if (contextDate && (currentView === 'month' || currentView === 'week')) {
+                const startRender = isSameDay(task.startTime, contextDate) ? contextDate : new Date(contextDate);
+                if (!isSameDay(task.startTime, contextDate)) startRender.setDate(startRender.getDate() - contextDate.getDay());
+                
+                const endRender = new Date(startRender);
+                endRender.setDate(endRender.getDate() + 6 - endRender.getDay());
+
+                let endDate = task.endTime < endRender ? task.endTime : endRender;
+                durationSpan = Math.ceil((endDate.getTime() - startRender.getTime()) / (1000 * 3600 * 24)) + (isSameDay(endDate, task.endTime) ? 0 : 1);
+                if(durationSpan > (7 - contextDate.getDay())) durationSpan = 7 - contextDate.getDay();
+            }
+
+            return `
+                <div class="task-item text-xs p-2 rounded-lg cursor-pointer ${bgColor} ${textColor} border-l-4 ${borderColor}" data-task-id="${task.id}" style="grid-column: span ${durationSpan};">
+                    <p class="font-bold truncate">${task.title}</p>
+                    ${timeString}
+                    <div class="flex items-center space-x-2 mt-1">
+                        <div class="w-full bg-gray-200 rounded-full h-1.5"><div class="bg-blue-500 h-1.5 rounded-full" style="width: ${task.progress}%"></div></div>
+                        <span class="text-xs font-semibold">${task.progress}%</span>
+                    </div>
+                    <div class="flex items-center mt-2 -space-x-1">
+                        ${(task.assignedTo || []).map(uid => createAvatar(uid)).join('')}
+                    </div>
+                </div>`;
+        }
+        
+        // ... Other helper functions
+        const getStatusColors = (status) => {
+            switch (status) {
+                case 'ongoing': return { bgColor: 'bg-blue-100 dark:bg-blue-900/50', textColor: 'text-blue-700 dark:text-blue-300', borderColor: 'border-blue-500', textLabel: 'On-going' };
+                case 'almost-finished': return { bgColor: 'bg-yellow-100 dark:bg-yellow-900/50', textColor: 'text-yellow-700 dark:text-yellow-300', borderColor: 'border-yellow-500', textLabel: 'Almost Finished' };
+                case 'help-requested': return { bgColor: 'bg-red-100 dark:bg-red-900/50', textColor: 'text-red-700 dark:text-red-300', borderColor: 'border-red-500', textLabel: 'Help Requested' };
+                case 'finished': return { bgColor: 'bg-green-100 dark:bg-green-900/50', textColor: 'text-green-700 dark:text-green-300', borderColor: 'border-green-500', textLabel: 'Finished' };
+                default: return { bgColor: 'bg-gray-100 dark:bg-gray-700/50', textColor: 'text-gray-700 dark:text-gray-300', borderColor: 'border-gray-500', textLabel: 'Unknown' };
+            }
+        };
+
+        const createAvatar = (uid) => {
+            const user = users.find(u => u.id === uid);
+            const name = user ? user.displayName : '?';
+            const colors = ['bg-red-500', 'bg-green-500', 'bg-blue-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
+            const color = colors[name.charCodeAt(0) % colors.length];
+            return `<div title="${name}" class="w-6 h-6 rounded-full ${color} text-white flex items-center justify-center text-xs font-bold ring-2 ring-white dark:ring-gray-800">${name.charAt(0)}</div>`;
+        };
+
+        const openModal = (modalElement) => {
+            el.modalBackdrop.classList.remove('hidden');
+            modalElement.classList.remove('opacity-0', 'pointer-events-none', 'scale-95');
+        };
+
+        const closeModal = (modalElement) => {
+            el.modalBackdrop.classList.add('hidden');
+            modalElement.classList.add('opacity-0', 'pointer-events-none', 'scale-95');
+        };
+
+        const openTaskModal = (task) => {
+            const { bgColor, textColor, borderColor, textLabel } = getStatusColors(task.status);
+            el.modalBody.innerHTML = `
+                <div class="border-l-8 ${borderColor} pl-4 mb-4">
+                    <h3 class="text-2xl font-bold">${task.title}</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">${task.startTime.toLocaleString()} - ${task.endTime.toLocaleString()}</p>
+                </div>
+                <!-- ... content ... -->
+                <div class="space-y-4">
+                     <div>
+                        <label class="text-sm font-semibold">Status</label>
+                        <div class="mt-1 p-2 rounded-lg font-semibold ${bgColor} ${textColor} text-center">${textLabel}</div>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold">Progress: ${task.progress}%</label>
+                        <input type="range" min="0" max="100" value="${task.progress}" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1" data-task-id="${task.id}">
+                    </div>
+                     <div>
+                        <label class="text-sm font-semibold">Assigned To</label>
+                        <div class="flex items-center space-x-2 mt-1">
+                            ${(task.assignedTo || []).map(uid => `<div class="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">${createAvatar(uid)}<span class="text-sm">${users.find(u=>u.id===uid)?.displayName}</span></div>`).join('')}
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold">Collaborators</label>
+                        <div class="flex items-center flex-wrap gap-2 mt-1">
+                             ${(task.collaborators || []).length > 0 ? task.collaborators.map(uid => `<div class="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">${createAvatar(uid)}<span class="text-sm">${users.find(u=>u.id===uid)?.displayName}</span></div>`).join('') : '<span class="text-sm text-gray-400">None</span>'}
+                            <button data-task-id="${task.id}" class="add-collaborator-btn bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 w-6 h-6 rounded-full flex items-center justify-center">+</button>
+                        </div>
+                    </div>
+                    <div class="border-t dark:border-gray-700 pt-4 mt-4">
+                         <label class="text-sm font-semibold mb-2 block">Actions</label>
+                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <button data-status="ongoing" class="task-action-btn px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-lg hover:bg-blue-200">On-going</button>
+                            <button data-status="almost-finished" class="task-action-btn px-3 py-2 text-sm bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-lg hover:bg-yellow-200">Almost Done</button>
+                            <button data-status="help-requested" class="task-action-btn px-3 py-2 text-sm bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg hover:bg-red-200">Request Help</button>
+                            <button data-status="finished" class="task-action-btn px-3 py-2 text-sm bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-lg hover:bg-green-200">Mark as Done</button>
+                         </div>
+                    </div>
+                    <div class="border-t dark:border-gray-700 pt-4 mt-4 text-right">
+                        <button class="delete-task-btn px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Delete Task</button>
+                    </div>
+                </div>
+            `;
+            openModal(el.taskModal);
+            
+            // Attach event listeners for modal content
+            el.modalBody.querySelector('input[type="range"]').addEventListener('input', (e) => updateTaskProgress(task.id, e.target.value));
+            el.modalBody.querySelectorAll('.task-action-btn').forEach(btn => btn.addEventListener('click', () => updateTaskStatus(task.id, btn.dataset.status)));
+            el.modalBody.querySelector('.add-collaborator-btn').addEventListener('click', () => openCollaboratorModal(task));
+            el.modalBody.querySelector('.delete-task-btn').addEventListener('click', () => deleteTask(task.id));
+        };
+        
+        const openAddTaskModal = () => {
+             el.modalBody.innerHTML = `
+                <h3 class="text-2xl font-bold mb-4">Create New Task</h3>
+                <form id="add-task-form" class="space-y-4">
+                    <input name="title" type="text" placeholder="Task Title" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    <div>
+                        <label class="text-sm">Start Time</label>
+                        <input name="startTime" type="datetime-local" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    </div>
+                     <div>
+                        <label class="text-sm">End Time</label>
+                        <input name="endTime" type="datetime-local" class="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600" required>
+                    </div>
+                    <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Create Task</button>
+                </form>
+            `;
+            openModal(el.taskModal);
+            el.modalBody.querySelector('#add-task-form').addEventListener('submit', handleAddTask);
+        };
+        
+        const openCollaboratorModal = (task) => {
+            const currentCollaborators = new Set(task.collaborators || []);
+            const assignedUsers = new Set(task.assignedTo || []);
+            
+            el.userList.innerHTML = users
+                .filter(u => !assignedUsers.has(u.id)) // Can't add someone who is already assigned
+                .map(user => `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <label for="user-${user.id}" class="flex items-center space-x-3 cursor-pointer">
+                        ${createAvatar(user.id)}
+                        <span>${user.displayName}</span>
+                    </label>
+                    <input type="checkbox" id="user-${user.id}" value="${user.id}" class="form-checkbox h-5 w-5 text-indigo-600 rounded" ${currentCollaborators.has(user.id) ? 'checked' : ''}>
+                </div>
+            `).join('');
+
+            openModal(el.addCollabModal);
+
+            const saveBtn = document.getElementById('save-collaborators-btn');
+            const newSaveBtn = saveBtn.cloneNode(true); // Prevent multiple listeners
+            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+            newSaveBtn.addEventListener('click', () => saveCollaborators(task.id));
+        };
+
+
+        // --- DATABASE ACTIONS ---
+        const handleAddTask = async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const newTask = {
+                title: form.title.value,
+                startTime: new Date(form.startTime.value),
+                endTime: new Date(form.endTime.value),
+                assignedTo: [currentUser.uid], // Initially assign to creator
+                collaborators: [],
+                progress: 0,
+                status: 'ongoing',
+                createdBy: currentUser.uid,
+                createdAt: serverTimestamp()
+            };
+            try {
+                await addDoc(tasksCollection, newTask);
+                closeModal(el.taskModal);
+            } catch (error) {
+                console.error("Error adding task:", error);
+            }
+        };
+
+        const updateTaskProgress = async (taskId, progress) => {
+            const progressVal = parseInt(progress, 10);
+            const newStatus = progressVal === 100 ? 'finished' : 'ongoing';
+            try {
+                await updateDoc(doc(tasksCollection, taskId), { progress: progressVal, status: newStatus });
+            } catch (error) {
+                console.error("Error updating progress:", error);
+            }
+        };
+        
+        const updateTaskStatus = async (taskId, status) => {
+            const newProgress = status === 'finished' ? 100 : tasks.find(t=>t.id===taskId).progress;
+             try {
+                await updateDoc(doc(tasksCollection, taskId), { status, progress: newProgress });
+            } catch (error) {
+                console.error("Error updating status:", error);
+            }
+        };
+
+        const saveCollaborators = async (taskId) => {
+            const selectedUsers = Array.from(el.userList.querySelectorAll('input:checked')).map(input => input.value);
+            try {
+                await updateDoc(doc(tasksCollection, taskId), { collaborators: selectedUsers });
+                closeModal(el.addCollabModal);
+            } catch(error) {
+                console.error("Error saving collaborators:", error);
+            }
+        };
+
+        const deleteTask = async (taskId) => {
+             if(confirm('Are you sure you want to delete this task?')) {
+                 try {
+                    await deleteDoc(doc(tasksCollection, taskId));
+                    closeModal(el.taskModal);
+                 } catch (error) {
+                    console.error("Error deleting task: ", error);
+                 }
+            }
+        };
+        
+        // --- HELPERS ---
+        const updateCurrentPeriodDisplay = () => { /* ... same as before ... */ };
+        const updateActiveViewButton = () => { /* ... same as before ... */ };
+        const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+        const isDateInRange = (date, start, end) => {
+            const d = new Date(date);
+            d.setHours(0,0,0,0);
+            const s = new Date(start);
+            s.setHours(0,0,0,0);
+            const e = new Date(end);
+            e.setHours(23,59,59,999);
+            return d >= s && d <= e;
+        };
+        const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        // --- EVENT LISTENERS ---
+        document.getElementById('logout-btn').addEventListener('click', handleLogout);
+        document.getElementById('add-task-btn').addEventListener('click', openAddTaskModal);
+        
+        document.querySelectorAll('.close-modal-btn').forEach(btn => btn.addEventListener('click', (e) => {
+            closeModal(e.target.closest('.modal'));
+        }));
+        
+        el.modalBackdrop.addEventListener('click', () => {
+            closeModal(el.taskModal);
+            closeModal(el.addCollabModal);
+        });
+
+        el.calendarContainer.addEventListener('click', (e) => {
+            const taskEl = e.target.closest('.task-item');
+            if (taskEl) {
+                const task = tasks.find(t => t.id === taskEl.dataset.taskId);
+                if(task) openTaskModal(task);
+            }
+        });
+        
+        // Navigation and view buttons
+        document.getElementById('prev-btn').addEventListener('click', () => {
+             switch (currentView) {
+                case 'month': currentDate.setMonth(currentDate.getMonth() - 1); break;
+                case 'week': currentDate.setDate(currentDate.getDate() - 7); break;
+                case 'day': currentDate.setDate(currentDate.getDate() - 1); break;
+            }
+            render();
+        });
+        document.getElementById('next-btn').addEventListener('click', () => {
+             switch (currentView) {
+                case 'month': currentDate.setMonth(currentDate.getMonth() + 1); break;
+                case 'week': currentDate.setDate(currentDate.getDate() + 7); break;
+                case 'day': currentDate.setDate(currentDate.getDate() + 1); break;
+            }
+            render();
+        });
+        document.getElementById('today-btn').addEventListener('click', () => {
+            currentDate = new Date();
+            render();
+        });
+        document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', (e) => {
+            currentView = e.target.dataset.view;
+            if(currentView === 'hour') currentView = 'day'; // Hour is just day view
+            render();
+        }));
+        
+        // THEME TOGGLE
+        const themeToggle = document.getElementById('theme-toggle');
+        const sunIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>`;
+        const moonIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>`;
+        
+        const applyTheme = (theme) => {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                themeToggle.innerHTML = sunIcon;
+            } else {
+                document.documentElement.classList.remove('dark');
+                themeToggle.innerHTML = moonIcon;
+            }
+        };
+
+        themeToggle.addEventListener('click', () => {
+            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        });
+
+        // Initialize theme on load
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        applyTheme(savedTheme);
+
+    </script>
+</body>
+</html>
+
